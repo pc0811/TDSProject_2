@@ -2,12 +2,13 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import pandas as pd
 import zipfile
-import os
+import io
 import requests
 import base64
 from docx import Document
 from PyPDF2 import PdfReader
 from dotenv import load_dotenv
+import os
 
 # Load environment variables
 load_dotenv()
