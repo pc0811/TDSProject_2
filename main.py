@@ -2,7 +2,7 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 import pandas as pd
 import zipfile
-import os
+import io
 import requests
 import base64
 from docx import Document
@@ -18,47 +18,46 @@ app = FastAPI()
 AIPROXY_URL = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")  # Ensure this is in your .env file
 
-def extract_file_content(file_path: str) -> str:
+def extract_file_content(file: UploadFile) -> str:
     """
     Extracts content from various file types (CSV, XLSX, DOCX, PDF, images, ZIP, etc.).
     """
     try:
-        if file_path.endswith(".csv"):
+        file_content = file.file.read()
+
+        if file.filename.endswith(".csv"):
             # Read CSV file
-            df = pd.read_csv(file_path)
+            df = pd.read_csv(io.BytesIO(file_content))
             return df.to_string()
-        elif file_path.endswith(".xlsx"):
+        elif file.filename.endswith(".xlsx"):
             # Read Excel file
-            df = pd.read_excel(file_path)
+            df = pd.read_excel(io.BytesIO(file_content))
             return df.to_string()
-        elif file_path.endswith(".docx"):
+        elif file.filename.endswith(".docx"):
             # Read DOCX file
-            doc = Document(file_path)
+            doc = Document(io.BytesIO(file_content))
             return "\n".join([para.text for para in doc.paragraphs])
-        elif file_path.endswith(".pdf"):
+        elif file.filename.endswith(".pdf"):
             # Read PDF file
-            reader = PdfReader(file_path)
+            reader = PdfReader(io.BytesIO(file_content))
             text = ""
             for page in reader.pages:
                 text += page.extract_text()
             return text
-        elif file_path.endswith((".png", ".jpg", ".jpeg")):
+        elif file.filename.endswith((".png", ".jpg", ".jpeg")):
             # Encode image to base64
-            with open(file_path, "rb") as image_file:
-                return base64.b64encode(image_file.read()).decode("utf-8")
-        elif file_path.endswith(".zip"):
+            return base64.b64encode(file_content).decode("utf-8")
+        elif file.filename.endswith(".zip"):
             # Extract ZIP file and process contents
             extracted_content = []
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                zip_ref.extractall("extracted_files")
-                for root, _, files in os.walk("extracted_files"):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        extracted_content.append(extract_file_content(file_path))
+            with zipfile.ZipFile(io.BytesIO(file_content), 'r') as zip_ref:
+                for file_name in zip_ref.namelist():
+                    with zip_ref.open(file_name) as extracted_file:
+                        extracted_content.append(extract_file_content(extracted_file))
             return "\n".join(extracted_content)
         else:
             # Handle unsupported file types
-            raise ValueError(f"Unsupported file type: {file_path}")
+            raise ValueError(f"Unsupported file type: {file.filename}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error extracting file content: {str(e)}")
 
@@ -122,52 +121,24 @@ def requestLLM(prompt: str, file_content: str = None, is_image: bool = False) ->
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def process_question(question: str, file_path: str = None):
-    """
-    Process the question and file (if any) to generate an answer.
-    """
-    try:
-        file_content = None
-        is_image = False
-
-        if file_path:
-            # Check if the file is an image
-            if file_path.endswith((".png", ".jpg", ".jpeg")):
-                is_image = True
-            # Extract content for all file types
-            file_content = extract_file_content(file_path)
-
-        # Use ai_proxy_llm to answer the question
-        return requestLLM(question, file_content, is_image)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/")
 async def answer_question(
     question: str = Form(...),
     file: UploadFile = File(None)
 ):
     try:
-        file_path = None
+        file_content = None
+        is_image = False
+
         if file:
-            # Save the uploaded file temporarily
-            file_path = f"temp_{file.filename}"
-            with open(file_path, "wb") as buffer:
-                buffer.write(await file.read())
+            # Check if the file is an image
+            if file.filename.endswith((".png", ".jpg", ".jpeg")):
+                is_image = True
+            # Extract content for all file types
+            file_content = extract_file_content(file)
 
-        # Process the question and file
-        answer = process_question(question, file_path)
-
-        # Clean up temporary files
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-            if os.path.exists("extracted_files"):
-                for root, dirs, files in os.walk("extracted_files", topdown=False):
-                    for name in files:
-                        os.remove(os.path.join(root, name))
-                    for name in dirs:
-                        os.rmdir(os.path.join(root, name))
-                os.rmdir("extracted_files")
+        # Use ai_proxy_llm to answer the question
+        answer = requestLLM(question, file_content, is_image)
 
         return JSONResponse(content={"answer": answer})
     except Exception as e:
