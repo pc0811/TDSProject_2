@@ -122,7 +122,7 @@ def requestLLM(prompt: str, file_content: str = None, is_image: bool = False) ->
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/")
+@app.post("/api")
 async def answer_question(
     question: str = Form(...),
     file: UploadFile = File(None)
