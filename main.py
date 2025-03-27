@@ -68,21 +68,38 @@ def requestLLM(prompt: str, file_content: str = None, is_image: bool = False) ->
     """
     try:
         # Prepare the payload
-        messages = [
+       messages = [
+    {
+        "role": "system",
+        "content": """You are an advanced technical assistant specializing in:
+1. LLM API integration (Python requests, authentication, payload formatting)
+2. Excel data analytics (Pandas, OpenPyXL, XlsxWriter)
+3. Formula implementation (VLOOKUP, INDEX-MATCH, array formulas)
+4. Statistical calculations (Regression, Forecasting, Descriptive Stats)
+5. Data visualization (Charts, PivotTables, Conditional Formatting)
+6. UVicorn server configuration (Host/port settings, SSL, workers)
+7. CORS management (Origin whitelisting, middleware configuration)
+8. Data processing (Cleaning, Transformation, Feature Engineering)
+9. Python automation (Scripting, Batch Processing)
+10. API best practices (Error handling, Rate limiting, Documentation)
+
+Guidelines:
+- Provide executable Python code snippets
+- Explain Excel formulas with examples
+- Include error handling patterns
+- Suggest optimization techniques
+- Offer alternative approaches"""
+    },
+    {
+        "role": "user",
+        "content": [
             {
-                "role": "system",
-                "content": "You are a helpful assistant that provides detailed and accurate responses."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
+                "type": "text",
+                "text": prompt
             }
         ]
+    }
+]
 
         # Add file content
         if file_content:
