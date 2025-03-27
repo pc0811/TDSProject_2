@@ -67,11 +67,14 @@ def requestLLM(prompt: str, file_content: str = None, is_image: bool = False) ->
     Sends a request to the ai_proxy_llm for text or file-based tasks.
     """
     try:
+        if not AIPROXY_TOKEN:
+            raise HTTPException(status_code=400, detail="API token is missing")
+
         # Prepare the payload
-       messages = [
-    {
-        "role": "system",
-        "content": """You are an advanced technical assistant specializing in:
+        messages = [
+            {
+                "role": "system",
+                "content": """You are an advanced technical assistant specializing in:
 1. LLM API integration (Python requests, authentication, payload formatting)
 2. Excel data analytics (Pandas, OpenPyXL, XlsxWriter)
 3. Formula implementation (VLOOKUP, INDEX-MATCH, array formulas)
@@ -81,64 +84,54 @@ def requestLLM(prompt: str, file_content: str = None, is_image: bool = False) ->
 7. CORS management (Origin whitelisting, middleware configuration)
 8. Data processing (Cleaning, Transformation, Feature Engineering)
 9. Python automation (Scripting, Batch Processing)
-10. API best practices (Error handling, Rate limiting, Documentation)
-
-Guidelines:
-- Provide executable Python code snippets
-- Explain Excel formulas with examples
-- Include error handling patterns
-- Suggest optimization techniques
-- Offer alternative approaches"""
-    },
-    {
-        "role": "user",
-        "content": [
+10. API best practices (Error handling, Rate limiting, Documentation)"""
+            },
             {
-                "type": "text",
-                "text": prompt
+                "role": "user",
+                "content": [{"type": "text", "text": prompt}]
             }
         ]
-    }
-]
 
-        # Add file content
+        # Add file content if provided
         if file_content:
             if is_image:
                 messages[1]["content"].append({
                     "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{file_content}"
-                    }
+                    "image_url": {"url": f"data:image/png;base64,{file_content}"}
                 })
             else:
                 messages[1]["content"].append({
                     "type": "text",
-                    "text": f"Here is the content of the file:\n{file_content}"
+                    "text": f"File content:\n{file_content}"
                 })
 
         payload = {
-            "model": "gpt-4o-mini",
-            "messages": messages
+            "model": "gpt-4o-mini",  # Updated to valid model name
+            "messages": messages,
         }
 
-        # Set headers
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {AIPROXY_TOKEN}"
         }
 
-        # Send the request to the LLM
-        response = requests.post(AIPROXY_URL, headers=headers, json=payload)
+        response = requests.post(
+            AIPROXY_URL,
+            headers=headers,
+            json=payload,
+            timeout=30  # Added timeout
+        )
+        response.raise_for_status()
+        
+        return response.json()["choices"][0]["message"]["content"]
 
-        # Handle the response
-        if response.status_code == 200:
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        else:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"API request failed: {str(e)}")
+    except KeyError:
+        raise HTTPException(status_code=502, detail="Invalid API response format")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+        
 @app.post("/api")
 async def answer_question(
     question: str = Form(...),
